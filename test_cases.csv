@@ -1,0 +1,7 @@
+﻿test_id,scenario,expected_behavior,input_filename,actual_result,pass_fail,note
+T01,정면 얼굴,모자이크 저장,,,,
+T02,여러 얼굴,복수 영역 모자이크,,,,
+T03,얼굴 없는 사진,0개 탐지도 저장,,,,
+T04,측면 얼굴,누락 여부 기록,,,,
+T05,원본 보존,입력 파일 덮어쓰지 않음,,,,
+T06,빈 폴더,오류 안내,,,,
