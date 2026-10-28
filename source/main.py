@@ -174,6 +174,7 @@ def main():
             mosaic_face(
                 image,
                 x, y, w, h,
+                #모자이크 크기 수치
                 mosaic_size=80
             )
 
