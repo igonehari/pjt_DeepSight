@@ -1,4 +1,4 @@
-﻿test_id,scenario,expected_behavior,input_filename,actual_result,pass_fail,note
+﻿테스트_id,시나리오_id,기대 동작,예측,정답,개수오차합,성공여부,오류유형,원인분석
 T01,정면 얼굴,모자이크 저장,,,,
 T02,여러 얼굴,복수 영역 모자이크,,,,
 T03,얼굴 없는 사진,0개 탐지도 저장,,,,

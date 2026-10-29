@@ -1,4 +1,4 @@
-﻿sample_id,planned_filename,suggested_scene,permission_confirmed,person_in_charge,recorded,ground_truth_ready,note
+﻿샘플_id,파일명,장면설명,permission_confirmed,person_in_charge,recorded,ground_truth_ready,note
 S01,img_001.jpg,기본 정면/선명한 조건,,,,,
 S02,img_002.jpg,기본 정면/선명한 조건,,,,,
 S03,img_003.jpg,기본 정면/선명한 조건,,,,,

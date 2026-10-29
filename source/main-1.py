@@ -1,4 +1,3 @@
-
 import cv2
 import numpy as np
 import re
@@ -13,7 +12,7 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 INPUT_DIR = BASE_DIR / "data" / "images"
-OUTPUT_DIR = BASE_DIR / "output"
+OUTPUT_DIR = BASE_DIR / "outputs"
 CSV_PATH = OUTPUT_DIR / "face_mosaic_results.csv"
 
 IMAGE_EXTENSIONS = {
@@ -21,7 +20,10 @@ IMAGE_EXTENSIONS = {
 }
 
 # 검출용 이미지의 긴 변 최대 크기
-MAX_DETECTION_SIZE = 1600
+MAX_DETECTION_SIZE = 1200
+
+# 저장용 이미지의 긴 변 최대 크기
+MAX_OUTPUT_SIZE = 1200
 
 # 작은 얼굴 검출 기준
 MIN_FACE_SIZE = 30
@@ -73,13 +75,32 @@ def read_image(path):
 
 def save_image(path, image):
     try:
+        # 저장 전에 긴 변이 1200px를 넘으면 비율을 유지하며 축소
+        height, width = image.shape[:2]
+        scale = min(1.0, MAX_OUTPUT_SIZE / max(width, height))
+
+        if scale < 1.0:
+            output_image = cv2.resize(
+                image,
+                None,
+                fx=scale,
+                fy=scale,
+                interpolation=cv2.INTER_AREA
+            )
+        else:
+            output_image = image
+
         success, encoded = cv2.imencode(
             path.suffix,
-            image
+            output_image
         )
 
         if success:
             encoded.tofile(str(path))
+            print(
+                f"  저장 해상도: "
+                f"{output_image.shape[1]} x {output_image.shape[0]}"
+            )
             return True
 
         return False
