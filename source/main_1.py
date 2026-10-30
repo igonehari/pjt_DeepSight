@@ -20,10 +20,10 @@ IMAGE_EXTENSIONS = {
 }
 
 # 검출용 이미지의 긴 변 최대 크기
-MAX_DETECTION_SIZE = 1200
+MAX_DETECTION_SIZE = 800
 
 # 저장용 이미지의 긴 변 최대 크기
-MAX_OUTPUT_SIZE = 1200
+MAX_OUTPUT_SIZE = 800
 
 # 작은 얼굴 검출 기준
 MIN_FACE_SIZE = 30
@@ -137,6 +137,8 @@ def valid_face_box(x, y, w, h, image_width, image_height):
         return False
 
     return True
+
+
 
 
 # ========================================
