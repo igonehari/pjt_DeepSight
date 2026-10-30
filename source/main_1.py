@@ -21,12 +21,6 @@ IMAGE_EXTENSIONS = {
     ".jpg", ".jpeg", ".png", ".bmp", ".webp"
 }
 
-# 검출용 이미지의 긴 변 최대 크기
-MAX_DETECTION_SIZE = 800
-
-# 저장용 이미지의 긴 변 최대 크기
-MAX_OUTPUT_SIZE = 800
-
 # 작은 얼굴 검출 기준
 MIN_FACE_SIZE = 30
 
@@ -42,7 +36,7 @@ MAX_FACE_ASPECT = 1.40
 FACE_PADDING_RATIO = 0.00
 
 # 모자이크 블록 설정
-MOSAIC_SIZE = 30
+MOSAIC_SIZE = 10
 
 # 고해상도 바운딩 박스 두께
 BOX_THICKNESS_RATIO = 0.004
@@ -77,31 +71,12 @@ def read_image(path):
 
 def save_image(path, image):
     try:
-        height, width = image.shape[:2]
-        scale = min(1.0, MAX_OUTPUT_SIZE / max(width, height))
-
-        if scale < 1.0:
-            output_image = cv2.resize(
-                image,
-                None,
-                fx=scale,
-                fy=scale,
-                interpolation=cv2.INTER_AREA
-            )
-        else:
-            output_image = image
-
-        success, encoded = cv2.imencode(
-            path.suffix,
-            output_image
-        )
+        success, encoded = cv2.imencode(path.suffix, image)
 
         if success:
             encoded.tofile(str(path))
-            print(
-                f"  저장 해상도: "
-                f"{output_image.shape[1]} x {output_image.shape[0]}"
-            )
+            height, width = image.shape[:2]
+            print(f"  저장 해상도: {width} x {height}")
             return True
 
         return False
@@ -245,54 +220,7 @@ def detect_faces(gray, frontal_cascade, profile_cascade):
 
 
 # ========================================
-# 7. 검출용 이미지 축소
-# ========================================
-
-def prepare_detection_image(gray):
-    height, width = gray.shape
-
-    scale = min(
-        1.0,
-        MAX_DETECTION_SIZE / max(width, height)
-    )
-
-    if scale < 1.0:
-        detection_gray = cv2.resize(
-            gray,
-            None,
-            fx=scale,
-            fy=scale,
-            interpolation=cv2.INTER_AREA
-        )
-    else:
-        detection_gray = gray.copy()
-
-    return detection_gray, scale
-
-
-# ========================================
-# 8. 검출 좌표를 원본 좌표로 변환
-# ========================================
-
-def restore_original_coordinates(faces, scale):
-    if scale >= 1.0:
-        return faces
-
-    restored = []
-
-    for x, y, w, h in faces:
-        restored.append((
-            int(round(x / scale)),
-            int(round(y / scale)),
-            int(round(w / scale)),
-            int(round(h / scale))
-        ))
-
-    return restored
-
-
-# ========================================
-# 9. 얼굴 영역 확장
+# 7. 얼굴 영역 확장
 # ========================================
 
 def expand_box(x, y, w, h, image_width, image_height):
@@ -308,7 +236,7 @@ def expand_box(x, y, w, h, image_width, image_height):
 
 
 # ========================================
-# 10. 얼굴 모자이크
+# 8. 얼굴 모자이크
 # ========================================
 
 def mosaic_face(image, x, y, w, h):
@@ -343,7 +271,7 @@ def mosaic_face(image, x, y, w, h):
 
 
 # ========================================
-# 11. Ground Truth 비교 및 평가 함수
+# 9. Ground Truth 비교 및 평가 함수
 # ========================================
 
 def evaluate_results():
@@ -351,7 +279,6 @@ def evaluate_results():
         print(f"\n[안내] ground_truth.csv 파일이 없어 평가를 건너뜁니다. (경로: {GROUND_TRUTH_PATH})")
         return
 
-    # 1. Ground Truth 읽기
     gt_data = {}
     try:
         with open(GROUND_TRUTH_PATH, mode="r", encoding="utf-8-sig") as f:
@@ -367,7 +294,6 @@ def evaluate_results():
         print(f"[평가 오류] ground_truth.csv 읽기 실패: {e}")
         return
 
-    # 2. 생성된 결과 CSV(face_mosaic_results.csv)에서 검출된 얼굴 수 집계
     detected_counts = {filename: 0 for filename in gt_data.keys()}
 
     if CSV_PATH.exists():
@@ -383,7 +309,6 @@ def evaluate_results():
             print(f"[평가 오류] face_mosaic_results.csv 읽기 실패: {e}")
             return
 
-    # 3. 비교 및 통계 계산
     total_evaluated = len(gt_data)
     exact_matches = 0
     over_detections = 0
@@ -413,7 +338,6 @@ def evaluate_results():
 
     accuracy = (exact_matches / total_evaluated) * 100 if total_evaluated > 0 else 0
 
-    # 4. 상세 평가 결과 저장
     eval_csv_columns = ["filename", "ground_truth", "detected", "evaluation"]
     try:
         with open(EVAL_CSV_PATH, mode="w", newline="", encoding="utf-8-sig") as f:
@@ -423,7 +347,6 @@ def evaluate_results():
     except Exception as e:
         print(f"[평가 오류] evaluation_results.csv 저장 실패: {e}")
 
-    # 5. 콘솔 리포트 출력
     print("\n" + "=" * 60)
     print("모자이크 처리 성능 평가 결과")
     print("=" * 60)
@@ -436,7 +359,7 @@ def evaluate_results():
 
 
 # ========================================
-# 12. 메인 실행
+# 10. 메인 실행
 # ========================================
 
 def main():
@@ -451,7 +374,6 @@ def main():
     print(f"출력 폴더: {OUTPUT_DIR}")
     print(f"CSV 파일: {CSV_PATH}")
 
-    # OpenCV 기본 모델 경로
     frontal_path = (
             cv2.data.haarcascades
             + "haarcascade_frontalface_default.xml"
@@ -491,7 +413,6 @@ def main():
         "image_name",
         "image_width",
         "image_height",
-        "detection_scale",
         "face_index",
         "x", "y", "w", "h",
         "box_x1", "box_y1", "box_x2", "box_y2",
@@ -532,7 +453,7 @@ def main():
             original_height, original_width = image.shape[:2]
 
             print(
-                f"  원본 해상도: "
+                f"  해상도: "
                 f"{original_width} x {original_height}"
             )
 
@@ -541,23 +462,11 @@ def main():
                 cv2.COLOR_BGR2GRAY
             )
 
-            detection_gray, scale = prepare_detection_image(gray)
-
-            print(
-                f"  검출용 해상도: "
-                f"{detection_gray.shape[1]} x "
-                f"{detection_gray.shape[0]}"
-            )
-
-            detected_faces = detect_faces(
-                detection_gray,
+            # 전처리된 이미지를 그대로 사용하여 검출 수행
+            faces = detect_faces(
+                gray,
                 frontal_cascade,
                 profile_cascade
-            )
-
-            faces = restore_original_coordinates(
-                detected_faces,
-                scale
             )
 
             faces = [
@@ -580,7 +489,6 @@ def main():
                     "image_name": image_path.name,
                     "image_width": original_width,
                     "image_height": original_height,
-                    "detection_scale": round(scale, 5),
                     "face_index": "",
                     "x": "", "y": "", "w": "", "h": "",
                     "box_x1": "", "box_y1": "",
@@ -635,7 +543,6 @@ def main():
                     "image_name": image_path.name,
                     "image_width": original_width,
                     "image_height": original_height,
-                    "detection_scale": round(scale, 5),
                     "face_index": face_index,
                     "x": x,
                     "y": y,
@@ -676,7 +583,7 @@ def main():
     print(f"좌표 CSV: {CSV_PATH}")
     print("=" * 60)
 
-    # **추가된 부분: Ground Truth와 비교 및 평가 수행**
+    # Ground Truth와 비교 및 평가 수행
     evaluate_results()
 
 
