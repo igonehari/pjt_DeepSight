@@ -36,7 +36,7 @@ MAX_FACE_ASPECT = 1.40
 FACE_PADDING_RATIO = 0.00
 
 # 모자이크 블록 설정
-MOSAIC_SIZE = 10
+MOSAIC_SIZE = 6
 
 # 고해상도 바운딩 박스 두께
 BOX_THICKNESS_RATIO = 0.004
@@ -349,7 +349,6 @@ def evaluate_results():
     print("모자이크 처리 성능 평가 결과")
     print("=" * 60)
     print(f"평가 대상 이미지 수: {total_evaluated}개")
-    print(f"정확히 일치 (Exact Match): {exact_matches}개 ({accuracy:.1f}%)")
     print(f"과검출 (Over-detection, 예측 > 실제): {over_detections}개")
     print(f"미검출 (Under-detection, 예측 < 실제): {under_detections}개")
     print(f"상세 평가 리포트 저장: {EVAL_CSV_PATH}")
@@ -569,8 +568,6 @@ def main():
     print("\n" + "=" * 60)
     print("작업 완료")
     print(f"전체 이미지: {len(image_files)}개")
-    print(f"성공: {success_count}개")
-    print(f"실패: {failed_count}개")
     print(f"총 검출 얼굴 수: {total_faces}개")
     print(f"결과 이미지 폴더: {OUTPUT_DIR}")
     print(f"좌표 CSV: {CSV_PATH}")
