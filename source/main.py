@@ -1,67 +1,62 @@
-
 import cv2
 import numpy as np
 import re
+import csv
 from pathlib import Path
 
 
 # ========================================
-# 1. 경로 설정
+# 1. 경로 및 설정
 # ========================================
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 INPUT_DIR = BASE_DIR / "data" / "images"
 OUTPUT_DIR = BASE_DIR / "outputs"
+CSV_PATH = OUTPUT_DIR / "face_mosaic_results.csv"
+GROUND_TRUTH_PATH = BASE_DIR / "data" / "ground_truth.csv"
+EVAL_CSV_PATH = OUTPUT_DIR / "evaluation_results.csv"
 
 IMAGE_EXTENSIONS = {
     ".jpg", ".jpeg", ".png", ".bmp", ".webp"
 }
 
+# 작은 얼굴 검출 기준
+MIN_FACE_SIZE = 50
+
+# 얼굴 검출 민감도
+FRONTAL_NEIGHBORS = 8
+PROFILE_NEIGHBORS = 7
+
+# 얼굴 모양 필터
+MIN_FACE_ASPECT = 0.60
+MAX_FACE_ASPECT = 1.40
+
+# 모자이크 영역 확장 비율
+FACE_PADDING_RATIO = 0.00
+
+# 모자이크 블록 설정
+MOSAIC_SIZE = 10
+
+# 고해상도 바운딩 박스 두께
+BOX_THICKNESS_RATIO = 0.004
+
 
 # ========================================
-# 2. 숫자 기준 정렬
+# 2. 파일명 숫자 정렬
 # ========================================
 
 def natural_sort_key(path):
-    numbers = re.findall(r'\d+', path.stem)
+    numbers = re.findall(r"\d+", path.stem)
 
     if numbers:
-        return (int(numbers[-1]), path.name.lower())
+        return int(numbers[-1]), path.name.lower()
 
-    return (float("inf"), path.name.lower())
-
-
-# ========================================
-# 3. 얼굴 모자이크
-# ========================================
-
-def mosaic_face(image, x, y, w, h, mosaic_size=80):
-    face = image[y:y + h, x:x + w]
-
-    if face.size == 0:
-        return
-
-    small_w = max(1, w // mosaic_size)
-    small_h = max(1, h // mosaic_size)
-
-    small = cv2.resize(
-        face,
-        (small_w, small_h),
-        interpolation=cv2.INTER_LINEAR
-    )
-
-    mosaic = cv2.resize(
-        small,
-        (w, h),
-        interpolation=cv2.INTER_NEAREST
-    )
-
-    image[y:y + h, x:x + w] = mosaic
+    return float("inf"), path.name.lower()
 
 
 # ========================================
-# 4. 한글 경로 이미지 읽기
+# 3. 한글 경로 이미지 읽기 / 저장
 # ========================================
 
 def read_image(path):
@@ -74,16 +69,9 @@ def read_image(path):
         return None
 
 
-# ========================================
-# 5. 한글 경로 이미지 저장
-# ========================================
-
 def save_image(path, image):
     try:
-        success, encoded = cv2.imencode(
-            path.suffix,
-            image
-        )
+        success, encoded = cv2.imencode(path.suffix, image)
 
         if success:
             encoded.tofile(str(path))
@@ -97,33 +85,314 @@ def save_image(path, image):
 
 
 # ========================================
-# 6. 메인 실행
+# 4. 얼굴 후보 형태 검사
+# ========================================
+
+def valid_face_box(x, y, w, h, image_width, image_height):
+    if w <= 0 or h <= 0:
+        return False
+
+    if (
+            x < 0 or y < 0
+            or x + w > image_width
+            or y + h > image_height
+    ):
+        return False
+
+    if w < MIN_FACE_SIZE or h < MIN_FACE_SIZE:
+        return False
+
+    aspect = w / h
+
+    if not MIN_FACE_ASPECT <= aspect <= MAX_FACE_ASPECT:
+        return False
+
+    return True
+
+
+# ========================================
+# 5. 중복 검출 제거
+# ========================================
+
+def box_iou(box_a, box_b):
+    ax, ay, aw, ah = box_a
+    bx, by, bw, bh = box_b
+
+    x1 = max(ax, bx)
+    y1 = max(ay, by)
+    x2 = min(ax + aw, bx + bw)
+    y2 = min(ay + ah, by + bh)
+
+    intersection = max(0, x2 - x1) * max(0, y2 - y1)
+    union = aw * ah + bw * bh - intersection
+
+    if union <= 0:
+        return 0.0
+
+    return intersection / union
+
+
+def remove_duplicate_boxes(boxes, threshold=0.40):
+    boxes = sorted(
+        boxes,
+        key=lambda b: b[2] * b[3],
+        reverse=True
+    )
+
+    result = []
+
+    for box in boxes:
+        duplicate = any(
+            box_iou(box, kept) >= threshold
+            for kept in result
+        )
+
+        if not duplicate:
+            result.append(box)
+
+    return result
+
+
+# ========================================
+# 6. Haar Cascade 얼굴 검출
+# ========================================
+
+def detect_faces(gray, frontal_cascade, profile_cascade):
+    image_height, image_width = gray.shape
+
+    gray = cv2.equalizeHist(gray)
+
+    min_size = max(
+        24,
+        int(min(image_width, image_height) * 0.018)
+    )
+
+    frontal_faces = []
+    profile_faces = []
+
+    frontal_results = frontal_cascade.detectMultiScale(
+        gray,
+        scaleFactor=1.05,
+        minNeighbors=FRONTAL_NEIGHBORS,
+        minSize=(min_size, min_size),
+        flags=cv2.CASCADE_SCALE_IMAGE
+    )
+
+    for x, y, w, h in frontal_results:
+        box = tuple(map(int, (x, y, w, h)))
+
+        if valid_face_box(*box, image_width, image_height):
+            frontal_faces.append(box)
+
+    flipped_gray = cv2.flip(gray, 1)
+
+    for source, flipped in (
+            (gray, False),
+            (flipped_gray, True)
+    ):
+        profile_results = profile_cascade.detectMultiScale(
+            source,
+            scaleFactor=1.05,
+            minNeighbors=PROFILE_NEIGHBORS,
+            minSize=(min_size, min_size),
+            flags=cv2.CASCADE_SCALE_IMAGE
+        )
+
+        for x, y, w, h in profile_results:
+            x, y, w, h = map(int, (x, y, w, h))
+
+            if flipped:
+                x = image_width - x - w
+
+            box = (x, y, w, h)
+
+            if valid_face_box(*box, image_width, image_height):
+                profile_faces.append(box)
+
+    frontal_faces = remove_duplicate_boxes(frontal_faces, threshold=0.40)
+    profile_faces = remove_duplicate_boxes(profile_faces, threshold=0.40)
+
+    combined = frontal_faces + profile_faces
+
+    return remove_duplicate_boxes(combined, threshold=0.40)
+
+
+# ========================================
+# 7. 얼굴 영역 확장
+# ========================================
+
+def expand_box(x, y, w, h, image_width, image_height):
+    pad_x = int(w * FACE_PADDING_RATIO)
+    pad_y = int(h * FACE_PADDING_RATIO)
+
+    x1 = max(0, x - pad_x)
+    y1 = max(0, y - pad_y)
+    x2 = min(image_width, x + w + pad_x)
+    y2 = min(image_height, y + h + pad_y)
+
+    return x1, y1, x2 - x1, y2 - y1
+
+
+# ========================================
+# 8. 얼굴 모자이크
+# ========================================
+
+def mosaic_face(image, x, y, w, h):
+    image_height, image_width = image.shape[:2]
+
+    x1 = max(0, x)
+    y1 = max(0, y)
+    x2 = min(image_width, x + w)
+    y2 = min(image_height, y + h)
+
+    face = image[y1:y2, x1:x2]
+
+    if face.size == 0:
+        return
+
+    small_w = max(1, face.shape[1] // MOSAIC_SIZE)
+    small_h = max(1, face.shape[0] // MOSAIC_SIZE)
+
+    small = cv2.resize(
+        face,
+        (small_w, small_h),
+        interpolation=cv2.INTER_LINEAR
+    )
+
+    mosaic = cv2.resize(
+        small,
+        (face.shape[1], face.shape[0]),
+        interpolation=cv2.INTER_NEAREST
+    )
+
+    image[y1:y2, x1:x2] = mosaic
+
+
+# ========================================
+# 9. Ground Truth 비교 및 평가 함수
+# ========================================
+
+def evaluate_results():
+    if not GROUND_TRUTH_PATH.exists():
+        print(f"\n[안내] ground_truth.csv 파일이 없어 평가를 건너뜁니다. (경로: {GROUND_TRUTH_PATH})")
+        return
+
+    gt_data = {}
+    try:
+        with open(GROUND_TRUTH_PATH, mode="r", encoding="utf-8-sig") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                filename = row["파일명"].strip()
+                try:
+                    gt_count = int(row["실제 얼굴 수"])
+                except ValueError:
+                    gt_count = 0
+                gt_data[filename] = gt_count
+    except Exception as e:
+        print(f"[평가 오류] ground_truth.csv 읽기 실패: {e}")
+        return
+
+    detected_counts = {filename: 0 for filename in gt_data.keys()}
+
+    if CSV_PATH.exists():
+        try:
+            with open(CSV_PATH, mode="r", encoding="utf-8-sig") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    fname = row["image_name"]
+                    status = row["status"]
+                    if fname in detected_counts and status == "detected":
+                        detected_counts[fname] += 1
+        except Exception as e:
+            print(f"[평가 오류] face_mosaic_results.csv 읽기 실패: {e}")
+            return
+
+    total_evaluated = len(gt_data)
+    exact_matches = 0
+    over_detections = 0
+    under_detections = 0
+
+    eval_results = []
+
+    for filename, gt_count in gt_data.items():
+        det_count = detected_counts.get(filename, 0)
+
+        if det_count == gt_count:
+            result_status = "Exact Match"
+            exact_matches += 1
+        elif det_count > gt_count:
+            result_status = "Over-detection"
+            over_detections += 1
+        else:
+            result_status = "Under-detection"
+            under_detections += 1
+
+        eval_results.append({
+            "filename": filename,
+            "ground_truth": gt_count,
+            "detected": det_count,
+            "evaluation": result_status
+        })
+
+    accuracy = (exact_matches / total_evaluated) * 100 if total_evaluated > 0 else 0
+
+    eval_csv_columns = ["filename", "ground_truth", "detected", "evaluation"]
+    try:
+        with open(EVAL_CSV_PATH, mode="w", newline="", encoding="utf-8-sig") as f:
+            writer = csv.DictWriter(f, fieldnames=eval_csv_columns)
+            writer.writeheader()
+            writer.writerows(eval_results)
+    except Exception as e:
+        print(f"[평가 오류] evaluation_results.csv 저장 실패: {e}")
+
+    print("\n" + "=" * 60)
+    print("모자이크 처리 성능 평가 결과")
+    print("=" * 60)
+    print(f"평가 대상 이미지 수: {total_evaluated}개")
+    print(f"정확히 일치 (Exact Match): {exact_matches}개 ({accuracy:.1f}%)")
+    print(f"과검출 (Over-detection, 예측 > 실제): {over_detections}개")
+    print(f"미검출 (Under-detection, 예측 < 실제): {under_detections}개")
+    print(f"상세 평가 리포트 저장: {EVAL_CSV_PATH}")
+    print("=" * 60)
+
+
+# ========================================
+# 10. 메인 실행
 # ========================================
 
 def main():
     INPUT_DIR.mkdir(parents=True, exist_ok=True)
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    print("=" * 50)
-    print("     Haar Cascade 얼굴 모자이크 프로그램")
-    print("=" * 50)
+    print("=" * 60)
+    print("Haar Cascade 얼굴 모자이크 프로그램")
+    print("=" * 60)
 
     print(f"입력 폴더: {INPUT_DIR}")
     print(f"출력 폴더: {OUTPUT_DIR}")
+    print(f"CSV 파일: {CSV_PATH}")
 
-    # Haar Cascade 모델 사용
-    cascade_path = (
+    frontal_path = (
             cv2.data.haarcascades
             + "haarcascade_frontalface_default.xml"
     )
 
-    face_cascade = cv2.CascadeClassifier(cascade_path)
+    profile_path = (
+            cv2.data.haarcascades
+            + "haarcascade_profileface.xml"
+    )
 
-    if face_cascade.empty():
-        print("[오류] Haar Cascade 모델 로드 실패")
+    frontal_cascade = cv2.CascadeClassifier(frontal_path)
+    profile_cascade = cv2.CascadeClassifier(profile_path)
+
+    if frontal_cascade.empty():
+        print("[오류] 정면 얼굴 모델 로드 실패")
         return
 
-    # 이미지 목록 숫자 기준 정렬
+    if profile_cascade.empty():
+        print("[오류] 측면 얼굴 모델 로드 실패")
+        return
+
     image_files = sorted(
         [
             p for p in INPUT_DIR.iterdir()
@@ -135,73 +404,180 @@ def main():
     )
 
     if not image_files:
-        print("[안내] images 폴더에 사진이 없습니다.")
+        print("[안내] data/images 폴더에 사진이 없습니다.")
         return
 
-    print(f"\n총 {len(image_files)}개 이미지 처리 시작\n")
+    csv_columns = [
+        "image_name",
+        "image_width",
+        "image_height",
+        "face_index",
+        "x", "y", "w", "h",
+        "box_x1", "box_y1", "box_x2", "box_y2",
+        "status"
+    ]
 
     success_count = 0
     failed_count = 0
+    total_faces = 0
 
-    for index, image_path in enumerate(image_files, start=1):
-        print(f"[{index}/{len(image_files)}] {image_path.name}")
+    with open(
+            CSV_PATH,
+            "w",
+            newline="",
+            encoding="utf-8-sig"
+    ) as csv_file:
 
-        image = read_image(image_path)
-
-        if image is None:
-            print("  -> 이미지 읽기 실패\n")
-            failed_count += 1
-            continue
-
-        gray = cv2.cvtColor(
-            image,
-            cv2.COLOR_BGR2GRAY
+        writer = csv.DictWriter(
+            csv_file,
+            fieldnames=csv_columns
         )
 
-        gray = cv2.equalizeHist(gray)
+        writer.writeheader()
 
-        # 오검출을 줄이도록 설정한 Haar Cascade
-        faces = face_cascade.detectMultiScale(
-            gray,
-            scaleFactor=1.1,
-            minNeighbors=6,
-            minSize=(40, 40),
-            flags=cv2.CASCADE_SCALE_IMAGE
-        )
-
-        # 검출된 얼굴에 모자이크 적용
-        for (x, y, w, h) in faces:
-            mosaic_face(
-                image,
-                x, y, w, h,
-                #모자이크 크기 수치
-                mosaic_size=80
-            )
-
-        output_name = (
-            f"{image_path.stem}_mosaic"
-            f"{image_path.suffix}"
-        )
-
-        output_path = OUTPUT_DIR / output_name
-
-        if save_image(output_path, image):
+        for index, image_path in enumerate(image_files, 1):
             print(
-                f"  -> 저장 완료: {output_name}"
-                f" | 검출 얼굴: {len(faces)}개\n"
+                f"\n[{index}/{len(image_files)}] "
+                f"{image_path.name}"
             )
-            success_count += 1
-        else:
-            print("  -> 저장 실패\n")
-            failed_count += 1
 
-    print("=" * 50)
+            image = read_image(image_path)
+
+            if image is None:
+                print("  -> 이미지 읽기 실패")
+                failed_count += 1
+                continue
+
+            original_height, original_width = image.shape[:2]
+
+            gray = cv2.cvtColor(
+                image,
+                cv2.COLOR_BGR2GRAY
+            )
+
+            # 전처리된 이미지를 그대로 사용하여 검출 수행
+            faces = detect_faces(
+                gray,
+                frontal_cascade,
+                profile_cascade
+            )
+
+            faces = [
+                (x, y, w, h)
+                for x, y, w, h in faces
+                if valid_face_box(
+                    x, y, w, h,
+                    original_width,
+                    original_height
+                )
+            ]
+
+            faces = remove_duplicate_boxes(faces)
+            faces.sort(key=lambda b: (b[1], b[0]))
+
+            print(f"  검출 얼굴 수: {len(faces)}")
+
+            if not faces:
+                writer.writerow({
+                    "image_name": image_path.name,
+                    "image_width": original_width,
+                    "image_height": original_height,
+                    "face_index": "",
+                    "x": "", "y": "", "w": "", "h": "",
+                    "box_x1": "", "box_y1": "",
+                    "box_x2": "", "box_y2": "",
+                    "status": "no_face_detected"
+                })
+
+            for face_index, (x, y, w, h) in enumerate(
+                    faces, start=1
+            ):
+                bx, by, bw, bh = expand_box(
+                    x, y, w, h,
+                    original_width,
+                    original_height
+                )
+
+                mosaic_face(image, bx, by, bw, bh)
+
+                thickness = max(
+                    3,
+                    int(
+                        max(original_width, original_height)
+                        * BOX_THICKNESS_RATIO
+                    )
+                )
+
+                cv2.rectangle(
+                    image,
+                    (bx, by),
+                    (bx + bw - 1, by + bh - 1),
+                    (0, 0, 255),
+                    thickness
+                )
+
+                font_scale = max(
+                    0.7,
+                    max(original_width, original_height) / 1800
+                )
+
+                cv2.putText(
+                    image,
+                    f"Face {face_index}",
+                    (bx, max(25, by - 8)),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    font_scale,
+                    (0, 0, 255),
+                    max(2, thickness // 2),
+                    cv2.LINE_AA
+                )
+
+                writer.writerow({
+                    "image_name": image_path.name,
+                    "image_width": original_width,
+                    "image_height": original_height,
+                    "face_index": face_index,
+                    "x": x,
+                    "y": y,
+                    "w": w,
+                    "h": h,
+                    "box_x1": bx,
+                    "box_y1": by,
+                    "box_x2": bx + bw,
+                    "box_y2": by + bh,
+                    "status": "detected"
+                })
+
+                print(
+                    f"    Face {face_index}: "
+                    f"x={x}, y={y}, w={w}, h={h}"
+                )
+
+            output_path = OUTPUT_DIR / (
+                f"{image_path.stem}_mosaic"
+                f"{image_path.suffix}"
+            )
+
+            if save_image(output_path, image):
+                print(f"  -> 저장 완료: {output_path.name}")
+                success_count += 1
+                total_faces += len(faces)
+            else:
+                print("  -> 저장 실패")
+                failed_count += 1
+
+    print("\n" + "=" * 60)
     print("작업 완료")
     print(f"전체 이미지: {len(image_files)}개")
     print(f"성공: {success_count}개")
     print(f"실패: {failed_count}개")
-    print(f"저장 위치: {OUTPUT_DIR}")
-    print("=" * 50)
+    print(f"총 검출 얼굴 수: {total_faces}개")
+    print(f"결과 이미지 폴더: {OUTPUT_DIR}")
+    print(f"좌표 CSV: {CSV_PATH}")
+    print("=" * 60)
+
+    # Ground Truth와 비교 및 평가 수행
+    evaluate_results()
 
 
 if __name__ == "__main__":
