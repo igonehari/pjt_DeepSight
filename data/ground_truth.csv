@@ -1,21 +1,21 @@
 ﻿파일명,실제 얼굴 수,scene,note
-img_001.jpg,1,,
-img_002.jpg,1,,
-img_003.jpg,0,,
-img_004.jpg,4,,
-img_005.jpg,1,,
-img_006.jpg,1,,
-img_007.jpg,2,,
-img_008.jpg,1,,
-img_009.jpg,1,,
-img_010.jpg,1,,
-img_011.jpg,0,,
-img_012.jpg,1,,
-img_013.jpg,0,,
-img_014.jpg,1,,
-img_015.jpg,1,,
-img_016.jpg,1,,
-img_017.jpg,0,,
-img_018.jpg,1,,
-img_019.jpg,4,,
-img_020.jpg,4,,
+img_001.jpg,1,측면,밝은 조명
+img_002.jpg,1,정면,밝은 조명
+img_003.jpg,0,없음,어두운 조명
+img_004.jpg,4,정면,밝은 조명
+img_005.jpg,1,정면,밝은 조명
+img_006.jpg,1,정면,밝은 조명
+img_007.jpg,2,정면,밝은 조명
+img_008.jpg,1,정면,밝은 조명
+img_009.jpg,1,정면,밝은 조명
+img_010.jpg,1,정면,어두운 조명
+img_011.jpg,0,없음,밝음
+img_012.jpg,1,정면,밝은 조명
+img_013.jpg,0,없음,밝은 조명
+img_014.jpg,1,측면,밝은 조명
+img_015.jpg,1,정면,밝은 조명
+img_016.jpg,1,측면,밝은 조명
+img_017.jpg,0,없음,밝은 조명
+img_018.jpg,1,측면,밝은 조명
+img_019.jpg,4,측면,밝은 조명
+img_020.jpg,4,정면2 측면2,밝은 조명
