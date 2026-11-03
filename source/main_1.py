@@ -22,11 +22,11 @@ IMAGE_EXTENSIONS = {
 }
 
 # 작은 얼굴 검출 기준
-MIN_FACE_SIZE = 30
+MIN_FACE_SIZE = 50
 
 # 얼굴 검출 민감도
-FRONTAL_NEIGHBORS = 6
-PROFILE_NEIGHBORS = 5
+FRONTAL_NEIGHBORS = 8
+PROFILE_NEIGHBORS = 7
 
 # 얼굴 모양 필터
 MIN_FACE_ASPECT = 0.60
@@ -75,8 +75,6 @@ def save_image(path, image):
 
         if success:
             encoded.tofile(str(path))
-            height, width = image.shape[:2]
-            print(f"  저장 해상도: {width} x {height}")
             return True
 
         return False
@@ -451,11 +449,6 @@ def main():
                 continue
 
             original_height, original_width = image.shape[:2]
-
-            print(
-                f"  해상도: "
-                f"{original_width} x {original_height}"
-            )
 
             gray = cv2.cvtColor(
                 image,
