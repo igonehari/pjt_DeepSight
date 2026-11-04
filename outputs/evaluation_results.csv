@@ -1,8 +1,8 @@
 ﻿filename,ground_truth,detected,evaluation
-img_001.jpg,1,0,Under-detection
+img_001.jpg,1,1,Exact Match
 img_002.jpg,1,1,Exact Match
 img_003.jpg,0,0,Exact Match
-img_004.jpg,4,5,Over-detection
+img_004.jpg,4,4,Exact Match
 img_005.jpg,1,1,Exact Match
 img_006.jpg,1,1,Exact Match
 img_007.jpg,2,1,Under-detection
@@ -10,7 +10,7 @@ img_008.jpg,1,2,Over-detection
 img_009.jpg,1,1,Exact Match
 img_010.jpg,1,1,Exact Match
 img_011.jpg,0,1,Over-detection
-img_012.jpg,1,4,Over-detection
+img_012.jpg,1,3,Over-detection
 img_013.jpg,0,0,Exact Match
 img_014.jpg,1,1,Exact Match
 img_015.jpg,1,1,Exact Match
